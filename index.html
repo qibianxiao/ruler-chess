@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>尺棋 — Ruler Chess</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>尺 棋</h1>
+    </header>
+
+    <main>
+      <!-- Board -->
+      <div id="board-container">
+        <div id="board"></div>
+        <div id="legend">
+          <span class="legend-item">💣 小炸弹（退3格）</span>
+          <span class="legend-item">💥 大炸弹（回起点）</span>
+          <span class="legend-item">🪜 梯子（进3格）</span>
+          <span class="legend-item">🧪 药水（刻度→大格）</span>
+          <span class="legend-item" style="color:#e94560">⚠ 道具全部隐藏</span>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <aside id="sidebar">
+        <!-- Turn -->
+        <div id="turn-indicator" class="turn-banner turn-white">当前回合：白皇后</div>
+
+        <!-- Ruler: White -->
+        <div class="ruler-widget active" id="ruler-p0">
+          <div class="ruler-header">
+            <span class="ruler-label">♛ 白皇后 (AI) 刻度尺</span>
+            <span class="ruler-value" id="ruler-value-p0">0</span>
+          </div>
+          <div class="ruler-track">
+            <div class="ruler-bar ruler-bar-white" id="ruler-bar-p0" style="width:0%"></div>
+            <div class="ruler-ticks" id="ruler-ticks-p0"></div>
+          </div>
+        </div>
+
+        <!-- Ruler: Red -->
+        <div class="ruler-widget" id="ruler-p1">
+          <div class="ruler-header">
+            <span class="ruler-label">♛ 红皇后 刻度尺</span>
+            <span class="ruler-value" id="ruler-value-p1">0</span>
+          </div>
+          <div class="ruler-track">
+            <div class="ruler-bar ruler-bar-red" id="ruler-bar-p1" style="width:0%"></div>
+            <div class="ruler-ticks" id="ruler-ticks-p1"></div>
+          </div>
+        </div>
+
+        <!-- Dice & Controls -->
+        <div id="dice-area">
+          <span id="dice-display">🎲</span>
+          <button id="roll-btn" class="btn btn-primary">投掷骰子</button>
+        </div>
+
+        <div id="move-info"></div>
+
+        <button id="restart-btn" class="btn btn-secondary">重新开始</button>
+
+        <!-- Log -->
+        <div id="log-section">
+          <h3>游戏日志</h3>
+          <ol id="log-list"></ol>
+        </div>
+
+        <!-- Rules -->
+        <div id="rules-section">
+          <h3>📋 规则摘要</h3>
+          <ul>
+            <li>白皇后由 AI 控制，你操控红皇后</li>
+            <li>骰子范围：1 ~ 6</li>
+            <li>刻度尺 0 ↔ 20，边界反弹（默认向20方向移动）</li>
+            <li>刻度停在大格（0/5/10/15/20）才能移动棋子</li>
+            <li>移动步数 = 骰子点数，每步走相邻格</li>
+            <li>道具全部隐藏，踩到才触发：💣退3 / 💥回起点 / 🪜进3 / 🧪刻度→最近大格</li>
+            <li>"向起点/终点方向"基于曼哈顿距离，平局优先向下再向左（起点）或向上再向右（终点）</li>
+            <li>道具不连锁触发，每次只结算一个道具</li>
+            <li>到达右上角终点即获胜</li>
+          </ul>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Victory Overlay -->
+    <div id="victory-overlay" class="hidden">
+      <div id="victory-message"></div>
+      <button id="new-game-btn">再来一局</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
