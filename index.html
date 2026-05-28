@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>尺棋 — Ruler Chess</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>尺棋 — Ruler Chess v9</title>
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
   <div id="app">
     <header>
-      <h1>尺 棋</h1>
+      <h1>尺 棋 <span style="font-size:0.4em;color:#888;">v9 · 联机对战</span></h1>
     </header>
 
     <main>
@@ -20,8 +20,10 @@
           <span class="legend-item">💣 小炸弹（退3格）</span>
           <span class="legend-item">💥 大炸弹（回起点）</span>
           <span class="legend-item">🪜 梯子（进3格）</span>
-          <span class="legend-item">🧪 药水（刻度→大格）</span>
-          <span class="legend-item" style="color:#e94560">⚠ 道具全部隐藏</span>
+          <span class="legend-item">🧪 药水（下次步数×2）</span>
+          <span class="legend-item" style="color:#e94560">⚠ 道具经过即触发</span>
+          <span class="legend-item">🚩 红旗×5</span>
+          <span class="legend-item">🏳 白旗×5</span>
         </div>
       </div>
 
@@ -33,7 +35,7 @@
         <!-- Ruler: White -->
         <div class="ruler-widget active" id="ruler-p0">
           <div class="ruler-header">
-            <span class="ruler-label">♛ 白皇后 (AI) 刻度尺</span>
+            <span class="ruler-label">♛ 白皇后 刻度尺</span>
             <span class="ruler-value" id="ruler-value-p0">0</span>
           </div>
           <div class="ruler-track">
@@ -74,15 +76,14 @@
         <div id="rules-section">
           <h3>📋 规则摘要</h3>
           <ul>
-            <li>白皇后由 AI 控制，你操控红皇后</li>
-            <li>骰子范围：1 ~ 6</li>
-            <li>刻度尺 0 ↔ 20，边界反弹（默认向20方向移动）</li>
-            <li>刻度停在大格（0/5/10/15/20）才能移动棋子</li>
+            <li>两名玩家轮流操作，白皇后先手</li>
+            <li>骰子 1~6，刻度尺 0↔20 边界反弹，停大格(0/5/10/15/20)才能移动</li>
             <li>移动步数 = 骰子点数，每步走相邻格</li>
-            <li>道具全部隐藏，踩到才触发：💣退3 / 💥回起点 / 🪜进3 / 🧪刻度→最近大格</li>
-            <li>"向起点/终点方向"基于曼哈顿距离，平局优先向下再向左（起点）或向上再向右（终点）</li>
-            <li>道具不连锁触发，每次只结算一个道具</li>
-            <li>到达右上角终点即获胜</li>
+            <li>🚩🏳 棋盘有 5红旗+5白旗（旗子间保持 3×3 距离），经过即收集</li>
+            <li>白皇后收集白旗/红皇后收集红旗，至少3面，再到终点获胜</li>
+            <li>踩到敌方旗子（仅1次）：拔掉后设置 3×3 封锁区，对方无法通行</li>
+            <li>封锁区中心不能靠近对方当前位置（距离 > 2）</li>
+            <li>道具经过即触发：💣退3 / 💥回起点 / 🪜进3 / 🧪下次步数×2</li>
           </ul>
         </div>
       </aside>
@@ -95,6 +96,8 @@
     </div>
   </div>
 
-  <script src="game.js"></script>
+  <script src="peerjs.min.js?v=9"></script>
+  <script src="multiplayer.js?v=9"></script>
+  <script src="game.js?v=9"></script>
 </body>
 </html>

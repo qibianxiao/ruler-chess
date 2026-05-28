@@ -114,6 +114,50 @@ main {
   to   { box-shadow: inset 0 0 12px rgba(100, 180, 255, 0.7); }
 }
 
+/* Flag icons */
+.flag-icon {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: calc(var(--cell-size) * 0.4);
+  line-height: 1;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.flag-white {
+  filter: drop-shadow(0 0 2px rgba(255,255,255,0.8));
+}
+
+.flag-red {
+  filter: drop-shadow(0 0 2px rgba(255,0,0,0.8));
+}
+
+/* Blocked zone overlay */
+.zone-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 0, 0, 0.15);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Zone selection highlight */
+.cell-zone-select {
+  background: #2a4a2a !important;
+  cursor: pointer;
+  animation: zone-pulse 0.8s ease-in-out infinite alternate;
+}
+
+.cell-zone-select:hover {
+  background: #3a7a3a !important;
+}
+
+@keyframes zone-pulse {
+  from { box-shadow: inset 0 0 4px rgba(100, 255, 100, 0.3); }
+  to   { box-shadow: inset 0 0 12px rgba(100, 255, 100, 0.7); }
+}
+
 /* Item (hidden by default — revealed only when stepped on) */
 .item-icon {
   position: absolute;
