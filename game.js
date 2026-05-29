@@ -226,7 +226,7 @@ function moveTowardTarget(fromRow, fromCol, targetRow, targetCol) {
 
 // -- Game Flow --------------------------------------------------------------
 
-function startNewGame() {
+function startNewGame(preset) {
   state.players[0].ruler = 0;
   state.players[0].pos = clonePos(START);
   state.players[1].ruler = 0;
@@ -243,8 +243,13 @@ function startNewGame() {
   state.zoneSelect = null;
   state.potionActive = [false, false];
   state.log = [];
-  placeItems();
-  placeFlags();
+  if (preset) {
+    state.items = preset.items;
+    state.flags = preset.flags;
+  } else {
+    placeItems();
+    placeFlags();
+  }
   log('新游戏开始！白皇后先手。经过旗子即可收集，收集 3 面己方旗后到达终点获胜。');
   render();
 }
@@ -256,6 +261,7 @@ function rollDice() {
   state._forceDice = null;
   state.diceValue = dice;
   const player = currentPlayer();
+  const pi = state.currentPlayer;
   const oldRuler = player.ruler;
 
   const newRuler = applyRulerBounce(oldRuler, dice);
@@ -265,9 +271,15 @@ function rollDice() {
   log(`${player.name} 投出 ${dice} 点，刻度尺: ${oldRuler} → ${newRuler}${bounceDesc}`);
 
   const hit = isBigMark(newRuler);
+  const multiplier = state.potionActive[pi] ? 2 : 1;
+
+  // 必须在 switchTurn() 之前发送 roll，否则对手先收到 turn 消息
+  // 改变了 currentPlayer，导致 roll 处理时更新了错误的玩家刻度尺
+  if (MP.connected && !state._remote) {
+    MP.send({ type: 'roll', dice, ruler: newRuler, hit, steps: hit ? dice * multiplier : 0, pi, oldRuler });
+  }
+
   if (hit) {
-    const pi = state.currentPlayer;
-    const multiplier = state.potionActive[pi] ? 2 : 1;
     if (state.potionActive[pi]) {
       log(`${player.name} 药水生效！移动步数加倍：${dice} × 2 = ${dice * 2} 步。`);
       state.potionActive[pi] = false;
@@ -278,11 +290,6 @@ function rollDice() {
   } else {
     log(`${player.name} 未停在大格，无法移动，回合结束。`);
     switchTurn();
-  }
-
-  // Multiplayer: send roll to opponent
-  if (MP.connected && !state._remote) {
-    MP.send({ type: 'roll', dice, ruler: newRuler, hit, steps: state.remainingSteps, pi: state.currentPlayer, oldRuler });
   }
 
   render();
@@ -325,6 +332,7 @@ function tryMoveTo(row, col) {
     flagInfo = { color: flag.color, row: flag.row, col: flag.col };
     handleFlagPickup(pi, flag);
     if (state.phase === 'zone-select') {
+      // 进入封锁区选择，不切回合
       if (MP.connected && !state._remote) MP.send({ type: 'move', row, col, rSteps: state.remainingSteps, phase: state.phase, flag: flagInfo });
       render(); return true;
     }
@@ -333,7 +341,6 @@ function tryMoveTo(row, col) {
   // Check item at new position (pass through = trigger)
   const item = getItemAt(row, col);
   if (item) {
-    if (MP.connected && !state._remote) MP.send({ type: 'move', row, col, rSteps: state.remainingSteps, phase: state.phase, item: { type: item.type, row: item.row, col: item.col }, flag: flagInfo });
     applyItem(item);
   }
 
@@ -346,18 +353,25 @@ function tryMoveTo(row, col) {
       log(`${player.name} 收集了足够旗子并到达终点，获胜！`);
     } else {
       log(`${player.name} 到达终点但旗子不足（${state.collectedFlags[pi]}/${WIN_FLAG_COUNT}），无法获胜。`);
-      if (state.remainingSteps === 0) switchTurn();
+      if (state.remainingSteps === 0) {
+        // 先发 move 消息，再切回合，保证对手先处理移动再收到 turn
+        if (MP.connected && !state._remote) MP.send({ type: 'move', row, col, rSteps: 0, phase: 'roll', flag: flagInfo, end: true });
+        switchTurn();
+        render();
+        return true;
+      }
     }
     if (MP.connected && !state._remote) MP.send({ type: 'move', row, col, rSteps: state.remainingSteps, phase: state.phase, flag: flagInfo, end: true });
     render();
     return true;
   }
 
-  // If steps exhausted, end turn
-  if (state.remainingSteps === 0) switchTurn();
-
-  if (MP.connected && !state._remote && !item) {
-    MP.send({ type: 'move', row, col, rSteps: state.remainingSteps, phase: state.phase, flag: flagInfo });
+  // 先发 move 消息，再切回合（避免 turn 消息先到达导致对手状态错乱）
+  if (state.remainingSteps === 0) {
+    if (MP.connected && !state._remote) MP.send({ type: 'move', row, col, rSteps: 0, phase: 'roll', flag: flagInfo, item: item ? { type: item.type, row: item.row, col: item.col } : undefined });
+    switchTurn();
+  } else {
+    if (MP.connected && !state._remote) MP.send({ type: 'move', row, col, rSteps: state.remainingSteps, phase: state.phase, flag: flagInfo, item: item ? { type: item.type, row: item.row, col: item.col } : undefined });
   }
 
   render();
@@ -680,10 +694,8 @@ MP.onAction = function(action) {
       rollDice();
       break;
     case 'move':
-      // Sync opponent's position
-      state.players[action.pi].pos.row = action.row; // will be overwritten by tryMoveTo
+      // currentPlayer 已在 roll 处理中正确设置，tryMoveTo 直接执行即可
       tryMoveTo(action.row, action.col);
-      // If action included item/flag info, they were handled by tryMoveTo
       break;
     case 'zone':
       state.zoneSelect = { picker: 1 - action.blockedPlayer, blockedPlayer: action.blockedPlayer };

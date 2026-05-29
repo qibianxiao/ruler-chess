@@ -1,116 +1,174 @@
-// == 尺棋 联机对战模块 ========================================================
-// Uses PeerJS (WebRTC) — no server needed, pure P2P
+// == 尺棋 联机对战模块 v2 ====================================================
+// 从 PeerJS WebRTC 切换为 WebSocket 中继模式
+// 100% 连接成功率，不受 NAT 类型影响
+
+// 服务器地址 — 部署时改为你的服务器地址
+const WS_SERVER = (() => {
+  const url = new URL(location.href);
+  // 允许通过 URL 参数指定服务器
+  const p = url.searchParams.get('server');
+  if (p) return p;
+  // 默认: 同域名 wss（生产环境配 Nginx 反代）
+  if (location.protocol === 'https:') {
+    return `wss://${location.hostname}:3456`;
+  }
+  return `ws://${location.hostname}:3456`;
+})();
 
 const MP = {
-  peer: null,
-  conn: null,
-  host: false,         // true = host (White), false = guest (Red)
+  ws: null,
+  host: false,
   myIndex: -1,
   connected: false,
   roomId: null,
+  _joinId: null,        // 等待加入的房间 ID
+  _pendingInit: false,  // 连接建立后是否等待 init 消息
 
-  // Callbacks — set by game.js
-  onStatus: null,      // (msg) => void
-  onReady: null,       // () => void — both sides connected, game can start
-  onAction: null,      // (action) => void — opponent's action received
-  onDisconnect: null,  // () => void
+  // Callbacks — 由 game.js 设置
+  onStatus: null,
+  onReady: null,
+  onAction: null,
+  onDisconnect: null,
 
   init() {
     const url = new URL(location.href);
     const joinId = url.searchParams.get('join');
     if (joinId) {
+      this._joinId = joinId;
       this.joinRoom(joinId);
     }
-    // Otherwise wait for user to click "创建房间" or "加入房间"
   },
 
   createRoom() {
     this.host = true;
     this.myIndex = 0; // White
-    this.peer = new Peer();
-    this.peer.on('open', (id) => {
-      this.roomId = id;
-      const link = `${location.origin}${location.pathname}?join=${id}`;
-      this._status(`房间已创建！将链接发给对手：<br><input value="${link}" readonly style="width:100%;padding:4px;font-size:12px;" onclick="this.select()">`);
-      // Also show a copy button
-      this._showLinkPanel(link);
-    });
-    this.peer.on('connection', (conn) => {
-      this.conn = conn;
-      this._setupConn();
-    });
-    this.peer.on('error', (err) => {
-      this._status(`连接错误：${err.message}`);
+    this._pendingInit = false;
+    this._status('正在连接服务器...');
+    this._connect(() => {
+      // 连接建立后发送创建请求
+      this._send({ type: 'create' });
     });
   },
 
   joinRoom(hostId) {
     this.host = false;
     this.myIndex = 1; // Red
+    this._pendingInit = true;
     this._status('正在加入房间...');
-    try {
-      this.peer = new Peer();
-      this.peer.on('open', () => {
-        this.conn = this.peer.connect(hostId, { reliable: true });
-        this._setupConn();
-      });
-      this.peer.on('error', (err) => {
-        this._status(`连接失败：${err.message}。请检查链接是否正确，或让房主重新创建房间。`);
-      });
-    } catch(e) {
-      this._status(`初始化失败：${e.message}`);
-    }
+    this._connect(() => {
+      this._send({ type: 'join', roomId: hostId });
+    });
   },
 
   joinWithId(hostId) {
-    // Called from UI button
+    this._joinId = hostId;
     this.joinRoom(hostId);
-    // Update URL without reloading
     const url = new URL(location.href);
     url.searchParams.set('join', hostId);
     history.replaceState(null, '', url.toString());
   },
 
-  _setupConn() {
-    this.conn.on('open', () => {
-      this.connected = true;
-      this._status(`已连接！你是${this.host ? '白皇后（先手）' : '红皇后'}。`);
-      if (this.host) {
-        // Host sends initial game state
-        this.send({ type: 'init', items: state.items, flags: state.flags });
+  _connect(onOpen) {
+    if (this.ws) {
+      try { this.ws.close(); } catch (e) {}
+    }
+    try {
+      this.ws = new WebSocket(WS_SERVER);
+    } catch (e) {
+      this._status('无法连接服务器，请检查网络。');
+      return;
+    }
+
+    this.ws.onopen = () => {
+      if (onOpen) onOpen();
+    };
+
+    this.ws.onmessage = (e) => {
+      let data;
+      try { data = JSON.parse(e.data); } catch (ex) { return; }
+      this._handleMessage(data);
+    };
+
+    this.ws.onclose = () => {
+      if (this.connected) {
+        this.connected = false;
+        this._status('与服务器断开连接。');
+        if (this.onDisconnect) this.onDisconnect();
       }
-      this._hideLinkPanel();
-      if (this.onReady) this.onReady();
-    });
+    };
 
-    this.conn.on('data', (data) => {
-      if (data.type === 'init') {
-        // Guest receives initial state
-        state.items = data.items;
-        state.flags = data.flags;
-        state.phase = 'roll';
-        render();
-        if (this.onReady) this.onReady();
-        return;
-      }
-      if (this.onAction) this.onAction(data);
-    });
+    this.ws.onerror = () => {
+      // close 事件会紧接着触发，在 onclose 中处理
+    };
+  },
 
-    this.conn.on('close', () => {
-      this.connected = false;
-      this._status('对手已断开连接。');
-      if (this.onDisconnect) this.onDisconnect();
-    });
+  _handleMessage(data) {
+    switch (data.type) {
+      case 'room-created':
+        this.roomId = data.roomId;
+        this.connected = false; // 等待对手加入才算 connected
+        const link = `${location.origin}${location.pathname}?join=${data.roomId}`;
+        this._status(`房间已创建！将链接发给对手：`);
+        this._showLinkPanel(link);
+        break;
 
-    this.conn.on('error', (err) => {
-      this._status(`连接错误：${err}`);
-    });
+      case 'joined':
+        this.roomId = data.roomId;
+        this.connected = true;
+        this._hideLinkPanel();
+        // 客机等待主机的 init 消息来同步游戏状态
+        this._status('已连接，等待主机同步游戏状态...');
+        break;
+
+      case 'guest-joined':
+        this.connected = true;
+        this._hideLinkPanel();
+        this._status('对手已加入！你是白皇后（先手）。');
+        // 先初始化游戏状态，再发送给客机
+        if (this.onReady) this.onReady(); // → startNewGame() 生成 items/flags
+        this._send({
+          type: 'init',
+          items: state.items,
+          flags: state.flags
+        });
+        break;
+
+      case 'peer-left':
+        this.connected = false;
+        this._status('对手已断开连接。');
+        if (this.onDisconnect) this.onDisconnect();
+        break;
+
+      case 'init':
+        // 客机接收主机的游戏状态，用主机数据初始化
+        if (this._pendingInit) {
+          this._pendingInit = false;
+          // 直接调用 startNewGame 并传入主机的道具/旗子，保证双方同步
+          if (typeof startNewGame === 'function') {
+            startNewGame({ items: data.items, flags: data.flags });
+          }
+          this._status(`已连接！你是红皇后。`);
+        }
+        break;
+
+      case 'error':
+        this._status(`连接失败：${data.message}`);
+        break;
+
+      default:
+        // 转发对手的游戏操作
+        if (this.onAction) this.onAction(data);
+    }
   },
 
   send(action) {
-    if (this.connected && this.conn) {
-      try { this.conn.send(action); } catch(e) {}
+    if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this._send(action);
     }
+  },
+
+  _send(data) {
+    try { this.ws.send(JSON.stringify(data)); } catch (e) {}
   },
 
   isMyTurn() {
@@ -130,10 +188,10 @@ const MP = {
       document.body.appendChild(panel);
     }
     panel.innerHTML = `
-      <h3 style="color:#f0c040;margin-top:0;">🔗 邀请对手</h3>
+      <h3 style="color:#f0c040;margin-top:0;">邀请对手</h3>
       <p style="font-size:13px;color:#aaa;">复制以下链接发给对手</p>
       <input id="mp-link-input" value="${link}" readonly style="width:100%;padding:6px;font-size:12px;border:1px solid #4a4a6a;background:#0d0d1a;color:#e0e0e0;border-radius:4px;margin:8px 0;" onclick="this.select()">
-      <button onclick="navigator.clipboard.writeText(document.getElementById('mp-link-input').value);this.textContent='已复制！'" style="background:#e94560;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:14px;margin:4px;">📋 复制链接</button>
+      <button onclick="navigator.clipboard.writeText(document.getElementById('mp-link-input').value);this.textContent='已复制！'" style="background:#e94560;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:14px;margin:4px;">复制链接</button>
       <p style="font-size:12px;color:#666;margin-top:10px;">等待对手加入...</p>
     `;
   },
@@ -143,13 +201,14 @@ const MP = {
     if (panel) panel.remove();
   },
 
-  // Clean disconnect
   disconnect() {
-    if (this.conn) { try { this.conn.close(); } catch(e) {} }
-    if (this.peer) { try { this.peer.destroy(); } catch(e) {} }
+    if (this.ws) {
+      try { this.ws.close(); } catch (e) {}
+      this.ws = null;
+    }
     this.connected = false;
   }
 };
 
-// Auto-init: if URL has ?join=xxx, auto-join on page load
+// Auto-init
 MP.init();
