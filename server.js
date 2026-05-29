@@ -4,7 +4,7 @@
 
 const WebSocket = require('ws');
 
-const PORT = parseInt(process.argv[2]) || 3456;
+const PORT = parseInt(process.env.PORT || process.argv[2]) || 3456;
 
 const wss = new WebSocket.Server({ port: PORT });
 
