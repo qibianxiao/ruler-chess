@@ -2,17 +2,18 @@
 // 从 PeerJS WebRTC 切换为 WebSocket 中继模式
 // 100% 连接成功率，不受 NAT 类型影响
 
-// 服务器地址 — 部署时改为你的服务器地址
+// 服务器地址
+// 本地开发: ws://localhost:3456
+// 生产环境: wss://ruler-chess.onrender.com (Render.com 免费 TLS)
+// 自定义: 加 ?server=wss://your-server 到 URL
 const WS_SERVER = (() => {
   const url = new URL(location.href);
-  // 允许通过 URL 参数指定服务器
   const p = url.searchParams.get('server');
   if (p) return p;
-  // 默认: 同域名 wss（生产环境配 Nginx 反代）
   if (location.protocol === 'https:') {
-    return `wss://${location.hostname}:3456`;
+    return 'wss://ruler-chess.onrender.com';
   }
-  return `ws://${location.hostname}:3456`;
+  return 'ws://localhost:3456';
 })();
 
 const MP = {
